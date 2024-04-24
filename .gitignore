@@ -4,3 +4,5 @@ demo_data
 data
 clinical_text.csv
 processed_data.csv
+train.csv
+clinicalBERT_checkpoint

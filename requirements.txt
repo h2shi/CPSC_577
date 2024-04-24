@@ -6,6 +6,7 @@ seaborn
 #deep learning
 scikit-learn
 pytorch_pretrained_bert
+funcsigs
 #others
 tqdm
 spacy
