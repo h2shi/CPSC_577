@@ -3,6 +3,12 @@ clinical-bert/
 demo_data
 data
 clinical_text.csv
+clinical_text.csv.gz
 processed_data.csv
-train.csv
+processed_data.csv.gz
+
 clinicalBERT_checkpoint
+mini_data_w_num
+train_test_val_data
+clinical_text_num.csv.gz
+
