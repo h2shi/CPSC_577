@@ -79,7 +79,8 @@ class BertConfig(object):
                  attention_probs_dropout_prob=0.1,
                  max_position_embeddings=512,
                  type_vocab_size=2,
-                 initializer_range=0.02):
+                 initializer_range=0.02,
+                 hidden_size_num = 32):
         """Constructs BertConfig.
 
         Args:
@@ -121,6 +122,7 @@ class BertConfig(object):
             self.max_position_embeddings = max_position_embeddings
             self.type_vocab_size = type_vocab_size
             self.initializer_range = initializer_range
+            self.hidden_size_num = hidden_size_num
         else:
             raise ValueError("First argument must be either a vocabulary size (int)"
                              "or the path to a pretrained model config file (str)")
@@ -168,22 +170,32 @@ class BertLayerNorm(nn.Module):
         x = (x - u) / torch.sqrt(s + self.variance_epsilon)
         return self.gamma * x + self.beta
 
+class NumericEmbeddings(nn.Module):
+    """Embedding layer for numeric data."""
+    def __init__(self, numeric_hidden_size):
+        super(NumericEmbeddings, self).__init__()
+        self.projection = nn.Linear(1, numeric_hidden_size)
 
+    def forward(self, input_ids_num):
+        # Ensure numeric_data is a float tensor with an extra dimension for the linear layer
+        return self.projection(input_ids_num)
+    
 class BertEmbeddings(nn.Module):
     """Construct the embeddings from word, position and token_type embeddings.
     """
     def __init__(self, config):
         super(BertEmbeddings, self).__init__()
-        self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size)
-        self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
-        self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
-
+        self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size - config.hidden_size_num)
+        self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size - config.hidden_size_num)
+        self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size - config.hidden_size_num)
+        self.numeric_embeddings = NumericEmbeddings(config.hidden_size_num)  # Use updated config
+        
         # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
         # any TensorFlow checkpoint file
         self.LayerNorm = BertLayerNorm(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
-    def forward(self, input_ids, token_type_ids=None):
+    def forward(self, input_ids, token_type_ids=None, input_ids_num=None):
         seq_length = input_ids.size(1)
         position_ids = torch.arange(seq_length, dtype=torch.long, device=input_ids.device)
         position_ids = position_ids.unsqueeze(0).expand_as(input_ids)
@@ -195,6 +207,11 @@ class BertEmbeddings(nn.Module):
         token_type_embeddings = self.token_type_embeddings(token_type_ids)
 
         embeddings = words_embeddings + position_embeddings + token_type_embeddings
+
+        if input_ids_num is not None:
+            numeric_embeddings = self.numeric_embeddings(input_ids_num)
+            embeddings = torch.cat((embeddings, numeric_embeddings), dim=-1)     
+
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
         return embeddings
@@ -551,6 +568,8 @@ class BertModel(PreTrainedBertModel):
             selected in [0, 1]. It's a mask to be used if the input sequence length is smaller than the max
             input sequence length in the current batch. It's the mask that we typically use for attention when
             a batch has varying length sentences.
+        `numeric_data`: an optional torch.FloatTensor of shape [batch_size, sequence_length, 1] 
+             with numeric values to be embedded separately.
         `output_all_encoded_layers`: boolean which controls the content of the `encoded_layers` output as described below. Default: `True`.
 
     Outputs: Tuple of (encoded_layers, pooled_output)
@@ -585,7 +604,7 @@ class BertModel(PreTrainedBertModel):
         self.pooler = BertPooler(config)
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, output_all_encoded_layers=True):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, output_all_encoded_layers=True, input_ids_num=None):
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
         if token_type_ids is None:
@@ -606,7 +625,7 @@ class BertModel(PreTrainedBertModel):
         extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype) # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
 
-        embedding_output = self.embeddings(input_ids, token_type_ids)
+        embedding_output = self.embeddings(input_ids, token_type_ids,input_ids_num)
         encoded_layers = self.encoder(embedding_output,
                                       extended_attention_mask,
                                       output_all_encoded_layers=output_all_encoded_layers)
@@ -863,8 +882,8 @@ class BertForSequenceClassification(PreTrainedBertModel):
         self.classifier = nn.Linear(config.hidden_size, num_labels)
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
-        _, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, input_ids_num=None):
+        _, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False, input_ids_num=None)
         
         pooled_output2 = self.dropout(pooled_output)
         logits = self.classifier(pooled_output2)
