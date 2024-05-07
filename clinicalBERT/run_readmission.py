@@ -32,7 +32,8 @@ import matplotlib.pyplot as plt
 from scipy import interp
 
 from sklearn.metrics import roc_auc_score, precision_recall_curve, roc_curve, auc, confusion_matrix, classification_report
-from sklearn.utils.fixes import signature
+#from sklearn.utils.fixes import signature
+from funcsigs import signature
 import matplotlib.pyplot as plt
 
 import pandas as pd
@@ -45,7 +46,7 @@ from torch import nn
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 from pytorch_pretrained_bert.optimization import BertAdam
 #important
-from modeling_readmission import BertForSequenceClassification
+from clinicalBERT.modeling_readmission_original import BertForSequenceClassification
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s', 
                     datefmt = '%m/%d/%Y %H:%M:%S',
@@ -304,6 +305,7 @@ def vote_score(df, score, args):
     auc_score = auc(fpr, tpr)
 
     plt.figure(1)
+    plt.clf()
     plt.plot([0, 1], [0, 1], 'k--')
     plt.plot(fpr, tpr, label='Val (area = {:.3f})'.format(auc_score))
     plt.xlabel('False positive rate')
@@ -614,9 +616,10 @@ def main():
         string = './pytorch_model_new_'+args.readmission_mode+'.bin'
         torch.save(model.state_dict(), string)
 
-        fig1 = plt.figure()
+        fig1 = plt.figure(3)
         plt.plot(train_loss_history)
         fig1.savefig('loss_history.png', dpi=fig1.dpi)
+        plt.close(fig1)
     
     m = nn.Sigmoid()
     if args.do_eval:

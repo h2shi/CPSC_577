@@ -178,7 +178,7 @@ class NumericEmbeddings(nn.Module):
 
     def forward(self, input_ids_num):
         # Ensure numeric_data is a float tensor with an extra dimension for the linear layer
-        return self.projection(input_ids_num)
+        return self.projection(input_ids_num.unsqueeze(-1))
     
 class BertEmbeddings(nn.Module):
     """Construct the embeddings from word, position and token_type embeddings.
@@ -192,7 +192,9 @@ class BertEmbeddings(nn.Module):
         
         # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
         # any TensorFlow checkpoint file
+        
         self.LayerNorm = BertLayerNorm(config)
+        
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, input_ids, token_type_ids=None, input_ids_num=None):
@@ -210,7 +212,8 @@ class BertEmbeddings(nn.Module):
 
         if input_ids_num is not None:
             numeric_embeddings = self.numeric_embeddings(input_ids_num)
-            embeddings = torch.cat((embeddings, numeric_embeddings), dim=-1)     
+            embeddings = torch.cat((embeddings, numeric_embeddings), dim=-1)
+             
 
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
@@ -604,7 +607,7 @@ class BertModel(PreTrainedBertModel):
         self.pooler = BertPooler(config)
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, output_all_encoded_layers=True, input_ids_num=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, input_ids_num=None, output_all_encoded_layers=True):
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
         if token_type_ids is None:
@@ -882,8 +885,9 @@ class BertForSequenceClassification(PreTrainedBertModel):
         self.classifier = nn.Linear(config.hidden_size, num_labels)
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, input_ids_num=None):
-        _, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False, input_ids_num=None)
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, input_ids_num=None, labels=None):
+        
+        _, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, input_ids_num, output_all_encoded_layers=False)
         
         pooled_output2 = self.dropout(pooled_output)
         logits = self.classifier(pooled_output2)
